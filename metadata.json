@@ -1,0 +1,5 @@
+{
+  "name": "School Traffic Simulator",
+  "description": "An animated simulation of traffic flow and congestion around a school campus, allowing users to adjust parameters like car spawn rate, total cars, and traffic management rules to observe the impact on traffic jams and parking availability.",
+  "requestFramePermissions": []
+}
