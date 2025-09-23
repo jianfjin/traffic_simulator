@@ -34,6 +34,7 @@ const getInitialState = (settings: SimulationSettings): SimulationState => ({
     exitedCars: 0,
     carsParked: 0,
     totalParkingSpots: settings.parkingCapacity,
+    waitingAtP1: 0,
     waitingAtP3In: 0,
     waitingAtP3Out: 0,
     trafficFlow: 'Normal',
@@ -180,10 +181,10 @@ export const useSimulation = (settings: SimulationSettings) => {
         const wantsToPark = Math.random() < settings.parkingProbability;
         newCarsSource.push({
             id: p3Refs.nextCarId,
-            status: CarStatus.DRIVING_TO_P2,
+            status: CarStatus.WAITING_TO_SPAWN,
             progress: 0,
-            path: P1_TO_P2_PATH,
-            position: P1_TO_P2_PATH[0],
+            path: [],
+            position: P1,
             parkingDuration: 0,
             timer: 0,
             wantsToPark,
@@ -191,6 +192,30 @@ export const useSimulation = (settings: SimulationSettings) => {
         p3Refs.nextCarId++;
         p3Refs.spawnTimer = settings.spawnRate;
         newMetrics.spawnedCars = simulationState.metrics.spawnedCars + 1;
+    }
+
+    // --- P1 Queue Release Logic ---
+    const p1Queue = newCarsSource
+        .filter(c => c.status === CarStatus.WAITING_TO_SPAWN)
+        .sort((a, b) => a.id - b.id);
+
+    if (p1Queue.length > 0) {
+        const carsOnP1P2 = newCarsSource.filter(c => c.status === CarStatus.DRIVING_TO_P2);
+        let isP1Blocked = false;
+        if (carsOnP1P2.length > 0) {
+            const lastCar = carsOnP1P2.reduce((prev, curr) => (prev.progress < curr.progress ? prev : curr));
+            if (lastCar.progress < QUEUE_SPACING) {
+                isP1Blocked = true;
+            }
+        }
+
+        if (!isP1Blocked) {
+            const carToRelease = p1Queue[0];
+            carToRelease.status = CarStatus.DRIVING_TO_P2;
+            carToRelease.path = P1_TO_P2_PATH;
+            carToRelease.progress = 0;
+            carToRelease.position = P1;
+        }
     }
 
     // --- Performance Optimization: Bucket cars by status in a single pass ---
@@ -210,8 +235,6 @@ export const useSimulation = (settings: SimulationSettings) => {
     const p3EnterQueueIndexMap = new Map(p3EnterQueue.map((c, i) => [c.id, i]));
     const p3ExitQueueIndexMap = new Map(p3ExitQueue.map((c, i) => [c.id, i]));
     const p4QueueIndexMap = new Map(p4Queue.map((c, i) => [c.id, i]));
-
-    const hasP3ExitQueue = p3ExitQueue.length > 0;
 
     // --- P4 Congestion Detection ---
     const p4QueueSize = p4Queue.length;
@@ -321,6 +344,7 @@ export const useSimulation = (settings: SimulationSettings) => {
             case CarStatus.EXITING_CAMPUS:
             case CarStatus.MOVING_TO_PARK:
             case CarStatus.MOVING_FROM_PARK:
+            case CarStatus.DRIVING_TO_CAMPUS_DROPOFF:
                 if (distanceToMove > 0) {
                     updatedCar.progress += distanceToMove;
                     hasMoved = true;
@@ -329,7 +353,7 @@ export const useSimulation = (settings: SimulationSettings) => {
             
             case CarStatus.DROPPING_OFF_AT_P3:
                 updatedCar.timer -= deltaTime;
-                if (updatedCar.timer <= 0 && !hasP3ExitQueue && !p3Refs.isP3BlockedByP4Queue) {
+                if (updatedCar.timer <= 0 && !p3Refs.isP3BlockedByP4Queue) {
                     updatedCar.status = CarStatus.DRIVING_TO_P4;
                     updatedCar.path = P3_TO_P4_PATH;
                     updatedCar.progress = 0;
@@ -393,17 +417,19 @@ export const useSimulation = (settings: SimulationSettings) => {
                             updatedCar.parkingSpotIndex = freeSpotIndex;
                             newParkingSpots[freeSpotIndex] = updatedCar.id;
                         } else {
-                            updatedCar.status = CarStatus.DROPPING_OFF_IN_CAMPUS;
+                            updatedCar.status = CarStatus.DRIVING_TO_CAMPUS_DROPOFF;
                             updatedCar.path = CAMPUS_DROPOFF_PATH;
                             updatedCar.progress = 0;
-                            updatedCar.timer = CAR_DROP_OFF_TIME;
                         }
                     } else {
-                        updatedCar.status = CarStatus.DROPPING_OFF_IN_CAMPUS;
+                        updatedCar.status = CarStatus.DRIVING_TO_CAMPUS_DROPOFF;
                         updatedCar.path = CAMPUS_DROPOFF_PATH;
                         updatedCar.progress = 0;
-                        updatedCar.timer = CAR_DROP_OFF_TIME;
                     }
+                    break;
+                case CarStatus.DRIVING_TO_CAMPUS_DROPOFF:
+                    updatedCar.status = CarStatus.DROPPING_OFF_IN_CAMPUS;
+                    updatedCar.timer = CAR_DROP_OFF_TIME;
                     break;
                 case CarStatus.MOVING_TO_PARK:
                     updatedCar.status = CarStatus.PARKING;
@@ -430,12 +456,13 @@ export const useSimulation = (settings: SimulationSettings) => {
                 updatedCar.timer = CAR_DROP_OFF_TIME;
                 updatedCar.position = P3;
             } else {
-                if (hasP3ExitQueue) {
-                    updatedCar.status = CarStatus.WAITING_AT_P3_ENTER;
-                } else {
+                const isGreenLight = p3Refs.p3State === P3TrafficState.ALLOWING_IN || p3Refs.p3State === P3TrafficState.TRANSITIONING_TO_IN;
+                if (isGreenLight) {
                     updatedCar.status = CarStatus.ENTERING_CAMPUS;
                     updatedCar.path = P3_TO_CAMPUS_PATH;
                     updatedCar.progress = 0;
+                } else {
+                    updatedCar.status = CarStatus.WAITING_AT_P3_ENTER;
                 }
             }
         }
@@ -534,11 +561,14 @@ export const useSimulation = (settings: SimulationSettings) => {
     newMetrics.simulationTime = formatTime(p3Refs.simulationTime);
     newMetrics.carsParked = newParkingSpots.filter(s => s !== null).length;
     // Recalculate queue lengths from the final updated list for accuracy
+    newMetrics.waitingAtP1 = updatedCars.filter(c => c.status === CarStatus.WAITING_TO_SPAWN).length;
     newMetrics.waitingAtP3In = updatedCars.filter(c => c.status === CarStatus.WAITING_AT_P3_ENTER).length;
     newMetrics.waitingAtP3Out = updatedCars.filter(c => c.status === CarStatus.WAITING_AT_P3_EXIT).length;
     const waitingAtP4 = updatedCars.filter(c => c.status === CarStatus.WAITING_AT_P4).length;
 
-    if (newMetrics.waitingAtP3In > 5 || newMetrics.waitingAtP3Out > 5) {
+    if (newMetrics.waitingAtP1 > 5) {
+        newMetrics.trafficFlow = 'Congestion at P1';
+    } else if (newMetrics.waitingAtP3In > 5 || newMetrics.waitingAtP3Out > 5) {
         newMetrics.trafficFlow = 'Congestion at P3';
     } else if (waitingAtP4 > 5) {
         newMetrics.trafficFlow = 'Congestion at P4';
@@ -555,7 +585,7 @@ export const useSimulation = (settings: SimulationSettings) => {
     if (newMetrics.trafficFlow === 'Parking Full' && !summaryStats.firstParkingFullTime) {
         summaryStats.firstParkingFullTime = currentTimeFormatted;
     }
-    if ((newMetrics.trafficFlow === 'Congestion at P3' || newMetrics.trafficFlow === 'Congestion at P4')) {
+    if ((newMetrics.trafficFlow === 'Congestion at P1' || newMetrics.trafficFlow === 'Congestion at P3' || newMetrics.trafficFlow === 'Congestion at P4')) {
         if (!summaryStats.firstCongestionTime) {
             summaryStats.firstCongestionTime = currentTimeFormatted;
         }

@@ -24,8 +24,8 @@ const getCarColor = (status: CarStatus): string => {
 }
 
 export const CarComponent: React.FC<CarComponentProps> = React.memo(({ car }) => {
-  if (car.status === CarStatus.EXITED) {
-    return null; // Don't render exited cars
+  if (car.status === CarStatus.EXITED || car.status === CarStatus.WAITING_TO_SPAWN) {
+    return null; // Don't render exited or waiting-to-spawn cars
   }
 
   const style: React.CSSProperties = {

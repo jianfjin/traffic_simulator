@@ -1,10 +1,11 @@
-
 export enum CarStatus {
+    WAITING_TO_SPAWN,
     DRIVING_TO_P2,
     DRIVING_TO_P3,
     DECIDING_AT_P3,
     WAITING_AT_P3_ENTER,
     ENTERING_CAMPUS,
+    DRIVING_TO_CAMPUS_DROPOFF,
     DROPPING_OFF_IN_CAMPUS,
     EXITING_CAMPUS,
     WAITING_AT_P3_EXIT,
@@ -58,9 +59,10 @@ export enum CarStatus {
     exitedCars: number;
     carsParked: number;
     totalParkingSpots: number;
+    waitingAtP1: number;
     waitingAtP3In: number;
     waitingAtP3Out: number;
-    trafficFlow: 'Normal' | 'Congestion at P3' | 'Congestion at P4' | 'Parking Full';
+    trafficFlow: 'Normal' | 'Congestion at P1' | 'Congestion at P3' | 'Congestion at P4' | 'Parking Full';
   }
   
   export interface SummaryStats {
