@@ -30,13 +30,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ metrics }) => {
     };
     
     return (
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
-            <MetricCard title="Simulation Time" value={metrics.simulationTime} className="col-span-2 lg:col-span-2" valueClassName="text-cyan-400 text-2xl" />
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <MetricCard title="Simulation Time" value={metrics.simulationTime} className="col-span-2 md:col-span-3 lg:col-span-2" valueClassName="text-cyan-400 text-2xl" />
             <MetricCard title="Spawned Cars" value={metrics.spawnedCars} />
             <MetricCard title="Exited Cars" value={metrics.exitedCars} />
             <MetricCard title="Cars Parked" value={`${metrics.carsParked} / ${metrics.totalParkingSpots}`} />
             <MetricCard title="Waiting at P3 (In/Out)" value={`${metrics.waitingAtP3In} / ${metrics.waitingAtP3Out}`} />
-            <MetricCard title="Traffic Flow" value={metrics.trafficFlow} className="col-span-2 lg:col-span-2" valueClassName={getTrafficFlowColor()} />
+            <MetricCard title="Traffic Flow" value={metrics.trafficFlow} className="col-span-2 md:col-span-3 lg:col-span-2" valueClassName={getTrafficFlowColor()} />
         </div>
     );
 };

@@ -104,6 +104,12 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             min={1} max={20} step={1}
             onChange={v => onSettingsChange({ p3BatchSize: v })}
         />
+        <SliderControl 
+            label="P4 Yield Time"
+            value={settings.p4YieldTime}
+            min={1} max={10} step={0.5} unit="s"
+            onChange={v => onSettingsChange({ p4YieldTime: v })}
+        />
 
         <div className="mt-auto pt-6 flex space-x-4">
             <button

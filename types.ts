@@ -31,6 +31,7 @@ export enum CarStatus {
     parkingCapacity: number;
     parkingProbability: number;
     p3BatchSize: number;
+    p4YieldTime: number;
   }
   
   export interface PathPoint {

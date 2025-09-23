@@ -7,6 +7,7 @@ export const DEFAULT_SETTINGS: SimulationSettings = {
   parkingCapacity: 60,
   parkingProbability: 0.5,
   p3BatchSize: 5,
+  p4YieldTime: 3,
 };
 
 // Car properties
@@ -18,7 +19,6 @@ export const SIMULATED_PARKING_DURATION = 120; // Represents 4 hours in sim time
 
 // Intersection Logic
 export const P3_TRANSITION_TIME = 2; // seconds to switch traffic direction
-export const P4_YIELD_TIME = 3; // seconds
 export const P3_OUT_QUEUE_START = { x: 57, y: 38 };
 export const P3_OUT_QUEUE_DIRECTION = { x: 1, y: 0 }; // horizontal queue inside campus
 export const QUEUE_SPACING = 2.5; // Spacing between cars in queue, in %
@@ -44,7 +44,7 @@ export const createParkingSpots = (capacity: number): {x: number, y: number}[] =
 export const P1 = { x: 1, y: 79.5 };
 export const P2 = { x: 60, y: 79.5 };
 export const P3 = { x: 60, y: 41.5 };
-const P4 = { x: 1, y: 41.5 };
+export const P4 = { x: 1, y: 41.5 };
 
 const CAMPUS_ENTRANCE = { x: 57, y: 41.5 };
 const CAMPUS_DROPOFF = { x: 35, y: 15 };
