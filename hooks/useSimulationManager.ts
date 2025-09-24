@@ -7,6 +7,7 @@ import { updateHumanModeLogic } from './humanControl';
 import {
   CAR_SPEED,
   PARKING_LOT_SPEED,
+  CAMPUS_ENTRY_SPEED,
   CRAWLING_SPEED,
   CAR_DROP_OFF_TIME,
   SIMULATED_PARKING_DURATION,
@@ -270,12 +271,13 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
         const isParkingManeuver = updatedCar.status === CarStatus.MOVING_TO_PARK ||
                                    updatedCar.status === CarStatus.MOVING_FROM_PARK;
 
-        const isCampusDriving = updatedCar.status === CarStatus.ENTERING_CAMPUS ||
-                                updatedCar.status === CarStatus.DRIVING_TO_CAMPUS_DROPOFF ||
+        const isCampusDriving = updatedCar.status === CarStatus.DRIVING_TO_CAMPUS_DROPOFF ||
                                 updatedCar.status === CarStatus.EXITING_CAMPUS;
 
         if (isParkingManeuver) {
             distanceToMove = CRAWLING_SPEED * deltaTime;
+        } else if (updatedCar.status === CarStatus.ENTERING_CAMPUS) {
+            distanceToMove = CAMPUS_ENTRY_SPEED * deltaTime;
         } else if (isCampusDriving) {
             distanceToMove = PARKING_LOT_SPEED * deltaTime;
         } else {
