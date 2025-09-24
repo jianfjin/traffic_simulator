@@ -14,7 +14,7 @@ export const DEFAULT_SETTINGS: SimulationSettings = {
 // Car properties
 export const CAR_SPEED = 15; // meters per second (base speed)
 export const PARKING_LOT_SPEED = 2; // Slower speed for campus area
-export const CAMPUS_ENTRY_SPEED = PARKING_LOT_SPEED / 3; // Even slower for initial entry
+export const CAMPUS_ENTRY_SPEED = (PARKING_LOT_SPEED / 3) * 2; // Even slower for initial entry
 export const CRAWLING_SPEED = 0.8; // Very slow speed for parking maneuvers
 export const CAR_LENGTH = 1.8; // Visual length for spacing, in % of canvas
 export const MIN_CAR_SPACING = 0.5; // Minimum spacing, in % of canvas

@@ -287,10 +287,18 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
         if (updatedCar.status === CarStatus.DRIVING_TO_P2 || updatedCar.status === CarStatus.DRIVING_TO_P3) {
             const leader = leaderMap.get(updatedCar.id);
             if (leader) {
+                // If a car is following another car in the queue leading up to P3, it should accelerate slowly.
+                // This creates a more realistic "accordion" effect as the queue starts to move.
+                if (leader.status === CarStatus.DRIVING_TO_P3 || leader.status === CarStatus.WAITING_AT_P3_ENTER) {
+                    // Slow down the acceleration by three times (use 1/3 of the normal speed).
+                    distanceToMove = (CAR_SPEED / 3) * deltaTime;
+                }
+
                 const dx = leader.position.x - updatedCar.position.x;
                 const dy = leader.position.y - updatedCar.position.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
 
+                // Regardless of speed, stop if it gets too close to the car in front.
                 if (distance < 3.5) {
                     distanceToMove = 0;
                 }
