@@ -29,11 +29,8 @@ import {
   P4
 } from '../constants';
 
-export const useSimulationManager = (settings: SimulationSettings, humanControls: HumanControls, resetKey: number) => {
+export const useSimulationManager = (settings: SimulationSettings, humanControls: HumanControls) => {
   const [simulationState, setSimulationState] = useState<SimulationState>(() => getInitialState(settings));
-
-  const settingsRef = useRef(settings);
-  settingsRef.current = settings;
 
   const simLogicRefs = useRef({
     lastTimestamp: 0,
@@ -44,7 +41,7 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
     p3Timer: 5,
     p3InCounter: 0,
     p3OutCounter: 0,
-    p3CarReleaseTimer: 0,
+    p3CarReleaseTimer: 0, // Timer for staggering car release from queues
     spotPositions: createParkingSpots(settings.parkingCapacity),
     isP3BlockedByP4Queue: false,
     nextP3ReleaseQueue: 'campus' as 'campus' | 'dropoff',
@@ -58,22 +55,21 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
   const animationFrameId = useRef<number | null>(null);
 
   const resetSimulation = useCallback(() => {
-    const currentSettings = settingsRef.current;
     if (animationFrameId.current) {
       cancelAnimationFrame(animationFrameId.current);
     }
-    setSimulationState(getInitialState(currentSettings));
+    setSimulationState(getInitialState(settings));
     simLogicRefs.current = {
       lastTimestamp: 0,
       simulationTime: 0,
-      spawnTimer: currentSettings.spawnRate,
+      spawnTimer: settings.spawnRate,
       nextCarId: 1,
       p3State: P3TrafficState.ALLOWING_OUT,
       p3Timer: 5,
       p3InCounter: 0,
       p3OutCounter: 0,
       p3CarReleaseTimer: 0,
-      spotPositions: createParkingSpots(currentSettings.parkingCapacity),
+      spotPositions: createParkingSpots(settings.parkingCapacity),
       isP3BlockedByP4Queue: false,
       nextP3ReleaseQueue: 'campus' as 'campus' | 'dropoff',
       summaryStats: {
@@ -82,70 +78,11 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
         lastCongestionTime: null,
       },
     };
-  }, []);
+  }, [settings]);
 
   useEffect(() => {
     resetSimulation();
-  }, [resetKey, resetSimulation]);
-  
-  const prevSettingsRef = useRef<SimulationSettings>(settings);
-
-  useEffect(() => {
-    const newCapacity = settings.parkingCapacity;
-    const oldCapacity = prevSettingsRef.current.parkingCapacity;
-    
-    if (newCapacity !== oldCapacity) {
-      const oldSpotPositions = createParkingSpots(oldCapacity);
-      
-      setSimulationState(prev => {
-        let updatedCars = [...prev.cars];
-        let newSpots;
-
-        if (newCapacity > oldCapacity) {
-          newSpots = [...prev.parkingSpots, ...Array(newCapacity - oldCapacity).fill(null)];
-        } else {
-          newSpots = prev.parkingSpots.slice(0, newCapacity);
-          const carsToEvict = updatedCars
-            .filter(car => car.parkingSpotIndex !== undefined && car.parkingSpotIndex >= newCapacity);
-          
-          if (carsToEvict.length > 0) {
-            const evictedCarIds = new Set(carsToEvict.map(c => c.id));
-            updatedCars = updatedCars.map(car => {
-              if (evictedCarIds.has(car.id)) {
-                const spotPosition = oldSpotPositions[car.parkingSpotIndex!];
-                return {
-                  ...car,
-                  status: CarStatus.MOVING_FROM_PARK,
-                  path: createPathFromSpotToExit(spotPosition),
-                  progress: 0,
-                  parkingSpotIndex: undefined,
-                  parkingDuration: SIMULATED_PARKING_DURATION,
-                  wantsToPark: false,
-                };
-              }
-              return car;
-            });
-          }
-        }
-
-        return {
-          ...prev,
-          cars: updatedCars,
-          parkingSpots: newSpots,
-          metrics: {
-            ...prev.metrics,
-            totalParkingSpots: newCapacity,
-            carsParked: newSpots.filter(s => s !== null).length,
-          }
-        };
-      });
-
-      simLogicRefs.current.spotPositions = createParkingSpots(newCapacity);
-    }
-    
-    prevSettingsRef.current = settings;
-
-  }, [settings]);
+  }, [settings, resetSimulation]);
 
   const togglePlayPause = useCallback(() => {
     if(simulationState.isFinished) return;
@@ -167,6 +104,7 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
         return;
     }
 
+    // FIX: Moved calculatePath function declaration to the top of the 'tick' function to prevent a ReferenceError, as it was being called before it was defined.
     const calculatePath = (points: {x: number, y: number}[]): PathPoint[] => {
         const path: PathPoint[] = [];
         for (let i = 0; i < points.length; i++) {
@@ -349,7 +287,10 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
         if (updatedCar.status === CarStatus.DRIVING_TO_P2 || updatedCar.status === CarStatus.DRIVING_TO_P3) {
             const leader = leaderMap.get(updatedCar.id);
             if (leader) {
+                // If a car is following another car in the queue leading up to P3, it should accelerate slowly.
+                // This creates a more realistic "accordion" effect as the queue starts to move.
                 if (leader.status === CarStatus.DRIVING_TO_P3 || leader.status === CarStatus.WAITING_AT_P3_ENTER) {
+                    // Slow down the acceleration by three times (use 1/3 of the normal speed).
                     distanceToMove = (CAR_SPEED / 3) * deltaTime;
                 }
 
@@ -357,6 +298,7 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
                 const dy = leader.position.y - updatedCar.position.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
 
+                // Regardless of speed, stop if it gets too close to the car in front.
                 if (distance < 3.5) {
                     distanceToMove = 0;
                 }
@@ -549,8 +491,8 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
             const queueIndex = p3ExitQueueIndexMap.get(updatedCar.id);
             if(queueIndex !== undefined) {
                 updatedCar.position = {
-                    x: P3_OUT_QUEUE_START.x - P3_OUT_QUEUE_DIRECTION.x * queueIndex * QUEUE_SPACING,
-                    y: P3_OUT_QUEUE_START.y - P3_OUT_QUEUE_DIRECTION.y * queueIndex * QUEUE_SPACING,
+                    x: P3_OUT_QUEUE_START.x + P3_OUT_QUEUE_DIRECTION.x * queueIndex * QUEUE_SPACING,
+                    y: P3_OUT_QUEUE_START.y + P3_OUT_QUEUE_DIRECTION.y * queueIndex * QUEUE_SPACING,
                 };
             }
         } else if (updatedCar.status === CarStatus.WAITING_AT_P4) {
@@ -623,6 +565,7 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
     
     const officiallyWaitingIn = updatedCars.filter(c => c.status === CarStatus.WAITING_AT_P3_ENTER);
     let totalWaitingIn = officiallyWaitingIn.length;
+    // If a queue has officially formed at P3, all cars driving towards it are also considered part of the traffic jam.
     if (totalWaitingIn > 0) {
         totalWaitingIn += updatedCars.filter(c => c.status === CarStatus.DRIVING_TO_P3).length;
         totalWaitingIn += updatedCars.filter(c => c.status === CarStatus.DRIVING_TO_P2).length;

@@ -1,3 +1,4 @@
+// FIX: Removed invalid file header text that was causing parsing errors.
 import type { SimulationSettings, PathPoint } from './types';
 
 export const DEFAULT_SETTINGS: SimulationSettings = {
@@ -24,7 +25,7 @@ export const SIMULATED_PARKING_DURATION = 120; // Represents 4 hours in sim time
 // Intersection Logic
 export const P3_TRANSITION_TIME = 2; // seconds to switch traffic direction
 export const P3_OUT_QUEUE_START = { x: 57, y: 38 };
-export const P3_OUT_QUEUE_DIRECTION = { x: 1, y: 0 }; // horizontal queue inside campus
+export const P3_OUT_QUEUE_DIRECTION = { x: -1, y: 0 }; // horizontal queue inside campus, moves left
 export const QUEUE_SPACING = 2.5; // Spacing between cars in queue, in %
 
 // Parking lot
@@ -51,9 +52,11 @@ export const P3 = { x: 60, y: 41.5 };
 export const P4 = { x: 1, y: 41.5 };
 
 const CAMPUS_ENTRANCE = { x: 57, y: 41.5 };
-const CAMPUS_DROPOFF = { x: 35, y: 15 };
 const CAMPUS_PARKING_ENTRANCE = { x: 57, y: 28 };
 const CAMPUS_EXIT_JUNCTION = { x: 57, y: 39.5 };
+const CAMPUS_ENTRY_AISLE_END_X = 8;
+const CAMPUS_EXIT_AISLE_Y = 33;
+
 
 // Helper to calculate path lengths
 const calculatePath = (points: {x: number, y: number}[]): PathPoint[] => {
@@ -85,23 +88,26 @@ export const P3_DROPOFF_LOOP = calculatePath([
 ]);
 
 export const P3_TO_CAMPUS_PATH = calculatePath([P3, CAMPUS_ENTRANCE, { x: 57, y: 35 }, CAMPUS_PARKING_ENTRANCE]);
-export const CAMPUS_CIRCLING_PATH = calculatePath([
-    CAMPUS_PARKING_ENTRANCE,
-    { x: 8, y: 28 },
-    { x: 8, y: 32 },
-    { x: 57, y: 32 },
-    CAMPUS_PARKING_ENTRANCE
+
+// Path for cars that will drop-off: drive the full top aisle
+export const CAMPUS_DROPOFF_PATH = calculatePath([CAMPUS_PARKING_ENTRANCE, { x: CAMPUS_ENTRY_AISLE_END_X, y: CAMPUS_PARKING_ENTRANCE.y }]);
+
+// Path from the dropoff point (end of top aisle) back to the exit junction, using the one-way loop
+export const CAMPUS_EXIT_PATH_FROM_DROPOFF = calculatePath([
+    { x: CAMPUS_ENTRY_AISLE_END_X, y: CAMPUS_PARKING_ENTRANCE.y }, // Dropoff point
+    { x: CAMPUS_ENTRY_AISLE_END_X, y: CAMPUS_EXIT_AISLE_Y },       // Go down to exit aisle
+    { x: CAMPUS_EXIT_JUNCTION.x, y: CAMPUS_EXIT_AISLE_Y },    // Go right on exit aisle
+    { x: CAMPUS_EXIT_JUNCTION.x, y: 35 },
+    CAMPUS_EXIT_JUNCTION
 ]);
-export const CAMPUS_DROPOFF_PATH = calculatePath([CAMPUS_PARKING_ENTRANCE, {x: 35, y: 28}, CAMPUS_DROPOFF]);
-export const CAMPUS_EXIT_PATH_FROM_DROPOFF = calculatePath([CAMPUS_DROPOFF, {x: 35, y: 28}, CAMPUS_PARKING_ENTRANCE, {x: 57, y: 35}, CAMPUS_EXIT_JUNCTION]);
 
 export const createPathFromSpotToExit = (spotPosition: {x: number, y: number}): PathPoint[] => {
-    const aislePoint = { x: spotPosition.x, y: CAMPUS_PARKING_ENTRANCE.y };
+    // New path: From spot, go down to exit aisle, go right on exit aisle, then to exit junction.
     return calculatePath([
         spotPosition,
-        aislePoint,
-        CAMPUS_PARKING_ENTRANCE,
-        {x: 57, y: 35}, 
+        { x: spotPosition.x, y: CAMPUS_EXIT_AISLE_Y },
+        { x: CAMPUS_EXIT_JUNCTION.x, y: CAMPUS_EXIT_AISLE_Y },
+        { x: CAMPUS_EXIT_JUNCTION.x, y: 35 },
         CAMPUS_EXIT_JUNCTION
     ]);
 };
