@@ -14,14 +14,16 @@ const App: React.FC = () => {
       p3Traffic: null,
       p3Decision: HumanP3DecisionAction.USE_PARKING_PROBABILITY,
   });
+  const [resetKey, setResetKey] = useState(0);
 
-  const { simulationState, controls } = useSimulationManager(settings, humanControls);
+  const { simulationState, controls } = useSimulationManager(settings, humanControls, resetKey);
 
   const handleSettingsChange = useCallback((newSettings: Partial<SimulationSettings>) => {
     setSettings(prev => ({ ...prev, ...newSettings }));
   }, []);
   
   const handleReset = useCallback(() => {
+    setResetKey(k => k + 1);
     setSettings(DEFAULT_SETTINGS);
     setHumanControls({
         p3Traffic: null,
