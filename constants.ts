@@ -8,13 +8,16 @@ export const DEFAULT_SETTINGS: SimulationSettings = {
   parkingProbability: 0.5,
   p3BatchSize: 5,
   p4YieldTime: 3,
+  mode: 'auto',
 };
 
 // Car properties
 export const CAR_SPEED = 15; // meters per second (base speed)
+export const PARKING_LOT_SPEED = 2; // Slower speed for campus area
+export const CRAWLING_SPEED = 0.8; // Very slow speed for parking maneuvers
 export const CAR_LENGTH = 1.8; // Visual length for spacing, in % of canvas
 export const MIN_CAR_SPACING = 0.5; // Minimum spacing, in % of canvas
-export const CAR_DROP_OFF_TIME = 2; // seconds
+export const CAR_DROP_OFF_TIME = 10; // seconds
 export const SIMULATED_PARKING_DURATION = 120; // Represents 4 hours in sim time
 
 // Intersection Logic
@@ -89,7 +92,7 @@ export const CAMPUS_CIRCLING_PATH = calculatePath([
     CAMPUS_PARKING_ENTRANCE
 ]);
 export const CAMPUS_DROPOFF_PATH = calculatePath([CAMPUS_PARKING_ENTRANCE, {x: 35, y: 28}, CAMPUS_DROPOFF]);
-export const CAMPUS_EXIT_PATH_FROM_DROPOFF = calculatePath([CAMPUS_DROPOFF, {x: 35, y: 28}, CAMPUS_PARKING_ENTRANCE, {x: 57, y: 35}, CAMPUS_EXIT_JUNCTION, P3]);
+export const CAMPUS_EXIT_PATH_FROM_DROPOFF = calculatePath([CAMPUS_DROPOFF, {x: 35, y: 28}, CAMPUS_PARKING_ENTRANCE, {x: 57, y: 35}, CAMPUS_EXIT_JUNCTION]);
 
 export const createPathFromSpotToExit = (spotPosition: {x: number, y: number}): PathPoint[] => {
     const aislePoint = { x: spotPosition.x, y: CAMPUS_PARKING_ENTRANCE.y };
@@ -98,8 +101,7 @@ export const createPathFromSpotToExit = (spotPosition: {x: number, y: number}): 
         aislePoint,
         CAMPUS_PARKING_ENTRANCE,
         {x: 57, y: 35}, 
-        CAMPUS_EXIT_JUNCTION, 
-        P3
+        CAMPUS_EXIT_JUNCTION
     ]);
 };
 

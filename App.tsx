@@ -2,14 +2,20 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { Dashboard } from './components/Dashboard';
 import { SimulationCanvas } from './components/SimulationCanvas';
-import { useSimulation } from './hooks/useSimulation';
-import type { SimulationSettings } from './types';
+import { useSimulationManager } from './hooks/useSimulationManager';
+import type { SimulationSettings, HumanControls } from './types';
+import { HumanP3DecisionAction } from './types';
 import { DEFAULT_SETTINGS } from './constants';
 import { SummaryReport } from './components/SummaryReport';
 
 const App: React.FC = () => {
   const [settings, setSettings] = useState<SimulationSettings>(DEFAULT_SETTINGS);
-  const { simulationState, controls } = useSimulation(settings);
+  const [humanControls, setHumanControls] = useState<HumanControls>({
+      p3Traffic: null,
+      p3Decision: HumanP3DecisionAction.USE_PARKING_PROBABILITY,
+  });
+
+  const { simulationState, controls } = useSimulationManager(settings, humanControls);
 
   const handleSettingsChange = useCallback((newSettings: Partial<SimulationSettings>) => {
     setSettings(prev => ({ ...prev, ...newSettings }));
@@ -17,6 +23,10 @@ const App: React.FC = () => {
   
   const handleReset = useCallback(() => {
     setSettings(DEFAULT_SETTINGS);
+    setHumanControls({
+        p3Traffic: null,
+        p3Decision: HumanP3DecisionAction.USE_PARKING_PROBABILITY,
+    });
   }, []);
 
   return (
@@ -32,6 +42,8 @@ const App: React.FC = () => {
             onTogglePlayPause={controls.togglePlayPause}
             onReset={handleReset}
             isPlaying={simulationState.isPlaying}
+            humanControls={humanControls}
+            onHumanControlsChange={setHumanControls}
           />
         </aside>
         <main className="flex-1 flex flex-col p-4 overflow-hidden">

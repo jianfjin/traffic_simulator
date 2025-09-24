@@ -1,5 +1,6 @@
 import React from 'react';
-import type { SimulationSettings } from '../types';
+import type { SimulationSettings, HumanControls } from '../types';
+import { HumanP3TrafficAction, HumanP3DecisionAction } from '../types';
 import { PlayIcon } from './icons/PlayIcon';
 import { PauseIcon } from './icons/PauseIcon';
 
@@ -9,6 +10,8 @@ interface ControlPanelProps {
   onTogglePlayPause: () => void;
   onReset: () => void;
   isPlaying: boolean;
+  humanControls: HumanControls;
+  onHumanControlsChange: (newControls: HumanControls) => void;
 }
 
 const SliderControl: React.FC<{
@@ -58,16 +61,87 @@ const SliderControl: React.FC<{
   </div>
 );
 
+const HumanModeControls: React.FC<{
+    humanControls: HumanControls;
+    onHumanControlsChange: (newControls: HumanControls) => void;
+}> = ({ humanControls, onHumanControlsChange }) => {
+    
+    const handleTrafficClick = (action: HumanP3TrafficAction) => {
+        onHumanControlsChange({ ...humanControls, p3Traffic: action });
+    };
+
+    const handleDecisionClick = (action: HumanP3DecisionAction) => {
+        onHumanControlsChange({ ...humanControls, p3Decision: action });
+    };
+
+    return (
+        <div className="mt-4 p-4 border border-cyan-500 rounded-lg">
+            <h3 className="text-lg font-bold mb-4 text-cyan-300">P3 Intersection Control</h3>
+            <div className="space-y-3">
+                <button
+                    onClick={() => handleTrafficClick(HumanP3TrafficAction.ALLOW_OUT)}
+                    className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 rounded-md font-semibold text-white transition-all duration-200"
+                >
+                    Allow Campus Exit
+                </button>
+                <button
+                    onClick={() => handleTrafficClick(HumanP3TrafficAction.ALLOW_IN)}
+                    className="w-full py-2 px-4 bg-green-600 hover:bg-green-500 rounded-md font-semibold text-white transition-all duration-200"
+                >
+                    Allow Campus Entry
+                </button>
+            </div>
+             <h3 className="text-lg font-bold mt-6 mb-4 text-cyan-300">P3 Decision Logic</h3>
+             <div className="space-y-3">
+                <button
+                    onClick={() => handleDecisionClick(HumanP3DecisionAction.DIVERT_ALL_TO_DROPOFF)}
+                    className={`w-full py-2 px-4 rounded-md font-semibold text-white transition-all duration-200 ${humanControls.p3Decision === HumanP3DecisionAction.DIVERT_ALL_TO_DROPOFF ? 'bg-orange-500 ring-2 ring-white' : 'bg-orange-700 hover:bg-orange-600'}`}
+                >
+                    Divert All to P3 Drop-off
+                </button>
+                 <button
+                    onClick={() => handleDecisionClick(HumanP3DecisionAction.USE_PARKING_PROBABILITY)}
+                    className={`w-full py-2 px-4 rounded-md font-semibold text-white transition-all duration-200 ${humanControls.p3Decision === HumanP3DecisionAction.USE_PARKING_PROBABILITY ? 'bg-purple-500 ring-2 ring-white' : 'bg-purple-700 hover:bg-purple-600'}`}
+                >
+                    Use Parking Probability
+                </button>
+            </div>
+        </div>
+    );
+};
+
+
 export const ControlPanel: React.FC<ControlPanelProps> = ({
   settings,
   onSettingsChange,
   onTogglePlayPause,
   onReset,
   isPlaying,
+  humanControls,
+  onHumanControlsChange
 }) => {
   return (
     <div className="p-4 bg-gray-800 rounded-lg h-full flex flex-col">
         <h2 className="text-xl font-bold mb-6 text-cyan-300 border-b border-gray-700 pb-2">Controls</h2>
+        
+        <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-300 mb-2">Mode</label>
+            <div className="flex bg-gray-700 rounded-md p-1">
+                <button
+                    onClick={() => onSettingsChange({ mode: 'auto' })}
+                    className={`flex-1 py-2 rounded-md text-sm font-semibold transition-all ${settings.mode === 'auto' ? 'bg-cyan-600 text-white' : 'text-gray-300'}`}
+                >
+                    Auto
+                </button>
+                <button
+                    onClick={() => onSettingsChange({ mode: 'human' })}
+                    className={`flex-1 py-2 rounded-md text-sm font-semibold transition-all ${settings.mode === 'human' ? 'bg-cyan-600 text-white' : 'text-gray-300'}`}
+                >
+                    Human
+                </button>
+            </div>
+        </div>
+
         <SliderControl 
             label="Speed Multiplier"
             value={settings.speedMultiplier}
@@ -98,18 +172,26 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             min={0} max={1} step={0.1} precision={1}
             onChange={v => onSettingsChange({ parkingProbability: v })}
         />
-        <SliderControl 
-            label="P3 Batch Size (In/Out)"
-            value={settings.p3BatchSize}
-            min={1} max={20} step={1}
-            onChange={v => onSettingsChange({ p3BatchSize: v })}
-        />
+        
+        {settings.mode === 'auto' && (
+            <SliderControl 
+                label="P3 Batch Size (In/Out)"
+                value={settings.p3BatchSize}
+                min={1} max={20} step={1}
+                onChange={v => onSettingsChange({ p3BatchSize: v })}
+            />
+        )}
+        
         <SliderControl 
             label="P4 Yield Time"
             value={settings.p4YieldTime}
             min={1} max={10} step={0.5} unit="s"
             onChange={v => onSettingsChange({ p4YieldTime: v })}
         />
+
+        {settings.mode === 'human' && (
+            <HumanModeControls humanControls={humanControls} onHumanControlsChange={onHumanControlsChange} />
+        )}
 
         <div className="mt-auto pt-6 flex space-x-4">
             <button

@@ -1,3 +1,6 @@
+// FIX: Removed self-import of CarStatus and P3TrafficState, which was causing declaration conflicts.
+// import { CarStatus, P3TrafficState } from './types';
+
 export enum CarStatus {
     WAITING_TO_SPAWN,
     DRIVING_TO_P2,
@@ -12,6 +15,7 @@ export enum CarStatus {
     DROPPING_OFF_AT_P3,
     DRIVING_TO_P4,
     WAITING_AT_P4,
+    DRIVING_TO_EXIT,
     EXITED,
     MOVING_TO_PARK,
     PARKING,
@@ -24,6 +28,21 @@ export enum CarStatus {
     ALLOWING_OUT,
     TRANSITIONING_TO_IN,
   }
+
+  export enum HumanP3TrafficAction {
+    ALLOW_IN,
+    ALLOW_OUT,
+  }
+
+  export enum HumanP3DecisionAction {
+    DIVERT_ALL_TO_DROPOFF,
+    USE_PARKING_PROBABILITY,
+  }
+
+  export interface HumanControls {
+    p3Traffic: HumanP3TrafficAction | null;
+    p3Decision: HumanP3DecisionAction;
+  }
   
   export interface SimulationSettings {
     speedMultiplier: number;
@@ -33,6 +52,7 @@ export enum CarStatus {
     parkingProbability: number;
     p3BatchSize: number;
     p4YieldTime: number;
+    mode: 'auto' | 'human';
   }
   
   export interface PathPoint {
@@ -51,6 +71,7 @@ export enum CarStatus {
     timer: number;
     wantsToPark: boolean;
     parkingSpotIndex?: number;
+    joinQueueTime?: number;
   }
   
   export interface SimulationMetrics {
