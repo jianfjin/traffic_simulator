@@ -160,64 +160,68 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             </div>
         </div>
 
-        <SliderControl 
-            label="Speed Multiplier"
-            value={settings.speedMultiplier}
-            min={1} max={20} step={1} unit="x"
-            onChange={v => onSettingsChange({ speedMultiplier: v })}
-        />
-        <SliderControl 
-            label="Spawn Rate (seconds/car)"
-            value={settings.spawnRate}
-            min={1} max={10} step={0.5} unit="s"
-            onChange={v => onSettingsChange({ spawnRate: v })}
-        />
-        <SliderControl 
-            label="Total Cars"
-            value={settings.totalCars}
-            min={50} max={500} step={50}
-            onChange={v => onSettingsChange({ totalCars: v })}
-        />
-        <SliderControl 
-            label="Parking Capacity"
-            value={settings.parkingCapacity}
-            min={10} max={100} step={10}
-            onChange={v => onSettingsChange({ parkingCapacity: v })}
-        />
-        <SliderControl 
-            label="Parking Probability"
-            value={settings.parkingProbability}
-            min={0} max={1} step={0.1} precision={1}
-            onChange={v => onSettingsChange({ parkingProbability: v })}
-        />
-        
-        {settings.mode === 'auto' && (
+        <div className="flex-grow overflow-y-auto pr-2 min-h-0">
             <SliderControl 
-                label="P3 Batch Size (In/Out)"
-                value={settings.p3BatchSize}
-                min={1} max={20} step={1}
-                onChange={v => onSettingsChange({ p3BatchSize: v })}
+                label="Speed Multiplier"
+                value={settings.speedMultiplier}
+                min={1} max={20} step={1} unit="x"
+                onChange={v => onSettingsChange({ speedMultiplier: v })}
             />
-        )}
-        
-        <SliderControl 
-            label="P4 Yield Time"
-            value={settings.p4YieldTime}
-            min={1} max={10} step={0.5} unit="s"
-            onChange={v => onSettingsChange({ p4YieldTime: v })}
-        />
+            <SliderControl 
+                label="Spawn Rate (seconds/car)"
+                value={settings.spawnRate}
+                min={1} max={10} step={0.5} unit="s"
+                onChange={v => onSettingsChange({ spawnRate: v })}
+            />
+            <SliderControl 
+                label="Total Cars"
+                value={settings.totalCars}
+                min={50} max={500} step={50}
+                onChange={v => onSettingsChange({ totalCars: v })}
+            />
+            <SliderControl 
+                label="Parking Capacity"
+                value={settings.parkingCapacity}
+                min={10} max={100} step={10}
+                onChange={v => onSettingsChange({ parkingCapacity: v })}
+            />
+            <SliderControl 
+                label="Parking Probability"
+                value={settings.parkingProbability}
+                min={0} max={1} step={0.1} precision={1}
+                onChange={v => onSettingsChange({ parkingProbability: v })}
+            />
+            
+            {settings.mode === 'auto' && (
+                <SliderControl 
+                    label="P3 Batch Size (In/Out)"
+                    value={settings.p3BatchSize}
+                    min={1} max={20} step={1}
+                    onChange={v => onSettingsChange({ p3BatchSize: v })}
+                />
+            )}
+            
+            <SliderControl 
+                label="P4 Yield Time"
+                value={settings.p4YieldTime}
+                min={1} max={10} step={0.5} unit="s"
+                onChange={v => onSettingsChange({ p4YieldTime: v })}
+            />
 
-        {settings.mode === 'human' ? (
-          <>
-            <div className="my-6">
+            {settings.mode === 'human' && (
+            <>
+                <div className="my-6">
+                    {actionButtons}
+                </div>
+                <HumanModeControls humanControls={humanControls} onHumanControlsChange={onHumanControlsChange} />
+            </>
+            )}
+        </div>
+
+        {settings.mode === 'auto' && (
+            <div className="mt-auto pt-6">
                 {actionButtons}
             </div>
-            <HumanModeControls humanControls={humanControls} onHumanControlsChange={onHumanControlsChange} />
-          </>
-        ) : (
-          <div className="mt-auto pt-6">
-              {actionButtons}
-          </div>
         )}
     </div>
   );

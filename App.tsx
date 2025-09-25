@@ -54,12 +54,12 @@ function App() {
                 transformOrigin: 'center',
             }}
         >
-            <div className="text-white min-h-screen font-sans flex flex-col p-4 gap-4" style={{height: DESIGN_HEIGHT}}>
+            <div className="text-white font-sans flex flex-col p-4 gap-4" style={{height: DESIGN_HEIGHT}}>
                 <header className="flex-shrink-0">
                     <h1 className="text-3xl font-bold text-cyan-400 text-center">Traffic Simulation</h1>
                 </header>
                 <main className="flex-grow flex gap-4" style={{ height: 'calc(100% - 60px)' }}>
-                    <div className="w-1/4 h-full overflow-y-auto">
+                    <div className="w-1/4 h-full">
                     <ControlPanel 
                         settings={settings}
                         onSettingsChange={handleSettingsChange}
