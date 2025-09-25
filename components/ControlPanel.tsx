@@ -120,6 +120,24 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   humanControls,
   onHumanControlsChange
 }) => {
+  const actionButtons = (
+    <div className="flex space-x-4">
+        <button
+            onClick={onTogglePlayPause}
+            className="flex-1 py-3 px-4 bg-cyan-600 hover:bg-cyan-500 rounded-md font-semibold text-white transition-all duration-200 flex items-center justify-center space-x-2"
+        >
+            {isPlaying ? <PauseIcon /> : <PlayIcon />}
+            <span>{isPlaying ? 'Pause' : 'Play'}</span>
+        </button>
+        <button
+            onClick={onReset}
+            className="flex-1 py-3 px-4 bg-gray-600 hover:bg-gray-500 rounded-md font-semibold text-white transition-all duration-200"
+        >
+            Reset
+        </button>
+    </div>
+  );
+
   return (
     <div className="p-4 bg-gray-800 rounded-lg h-full flex flex-col">
         <h2 className="text-xl font-bold mb-6 text-cyan-300 border-b border-gray-700 pb-2">Controls</h2>
@@ -157,7 +175,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         <SliderControl 
             label="Total Cars"
             value={settings.totalCars}
-            min={50} max={2500} step={50}
+            min={50} max={500} step={50}
             onChange={v => onSettingsChange({ totalCars: v })}
         />
         <SliderControl 
@@ -189,25 +207,18 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             onChange={v => onSettingsChange({ p4YieldTime: v })}
         />
 
-        {settings.mode === 'human' && (
+        {settings.mode === 'human' ? (
+          <>
+            <div className="my-6">
+                {actionButtons}
+            </div>
             <HumanModeControls humanControls={humanControls} onHumanControlsChange={onHumanControlsChange} />
+          </>
+        ) : (
+          <div className="mt-auto pt-6">
+              {actionButtons}
+          </div>
         )}
-
-        <div className="mt-auto pt-6 flex space-x-4">
-            <button
-                onClick={onTogglePlayPause}
-                className="flex-1 py-3 px-4 bg-cyan-600 hover:bg-cyan-500 rounded-md font-semibold text-white transition-all duration-200 flex items-center justify-center space-x-2"
-            >
-                {isPlaying ? <PauseIcon /> : <PlayIcon />}
-                <span>{isPlaying ? 'Pause' : 'Play'}</span>
-            </button>
-            <button
-                onClick={onReset}
-                className="flex-1 py-3 px-4 bg-gray-600 hover:bg-gray-500 rounded-md font-semibold text-white transition-all duration-200"
-            >
-                Reset
-            </button>
-        </div>
     </div>
   );
 };
