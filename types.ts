@@ -15,6 +15,7 @@ export enum CarStatus {
   PARKING = 'PARKING',
   MOVING_FROM_PARK = 'MOVING_FROM_PARK',
   WAITING_AT_P3_EXIT = 'WAITING_AT_P3_EXIT',
+  DRIVING_FROM_CAMPUS_TO_P3 = 'DRIVING_FROM_CAMPUS_TO_P3',
   DRIVING_TO_P4 = 'DRIVING_TO_P4',
   WAITING_AT_P4 = 'WAITING_AT_P4',
   DRIVING_TO_EXIT = 'DRIVING_TO_EXIT',
@@ -47,6 +48,7 @@ export interface SimulationSettings {
   p3BatchSize: number;
   p4YieldTime: number;
   mode: 'auto' | 'human';
+  campusCarLimit: number;
 }
 
 export interface SimulationMetrics {
@@ -55,16 +57,19 @@ export interface SimulationMetrics {
   exitedCars: number;
   carsParked: number;
   totalParkingSpots: number;
+  carsInCampus: number;
+  campusCarLimit: number;
   waitingAtP1: number;
   waitingAtP3In: number;
   waitingAtP3Out: number;
-  trafficFlow: 'Normal' | 'Congestion at P1' | 'Congestion at P3' | 'Congestion at P4' | 'Parking Full';
+  trafficFlow: 'Normal' | 'Congestion at P1' | 'Congestion at P3' | 'Congestion at P4' | 'Parking Full' | 'Campus Full';
 }
 
 export interface SummaryStats {
     firstParkingFullTime: string | null;
     firstCongestionTime: string | null;
     lastCongestionTime: string | null;
+    totalCongestionTime: string | null;
 }
 
 export interface SimulationState {

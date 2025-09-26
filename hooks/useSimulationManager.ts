@@ -8,6 +8,7 @@ import {
   CAR_SPEED,
   PARKING_LOT_SPEED,
   CAMPUS_ENTRY_SPEED,
+  CAMPUS_EXIT_SPEED,
   CRAWLING_SPEED,
   CAR_DROP_OFF_TIME,
   SIMULATED_PARKING_DURATION,
@@ -17,16 +18,17 @@ import {
   CAMPUS_DROPOFF_PATH,
   CAMPUS_EXIT_PATH_FROM_DROPOFF,
   createPathFromSpotToExit,
+  CAMPUS_INTERNAL_EXIT_PATH,
   P3_TO_P4_PATH,
   P4_EXIT_PATH,
   createParkingSpots,
   QUEUE_SPACING,
-  P3_OUT_QUEUE_START,
-  P3_OUT_QUEUE_DIRECTION,
+  getExitQueuePositionFromHead,
   P1,
   P2,
   P3,
-  P4
+  P4,
+  CAMPUS_EXIT_JUNCTION
 } from '../constants';
 
 export const useSimulationManager = (settings: SimulationSettings, humanControls: HumanControls) => {
@@ -49,6 +51,7 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
         firstParkingFullTime: null as string | null,
         firstCongestionTime: null as string | null,
         lastCongestionTime: null as string | null,
+        totalCongestionTime: 0,
     },
   });
   
@@ -76,6 +79,7 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
         firstParkingFullTime: null,
         firstCongestionTime: null,
         lastCongestionTime: null,
+        totalCongestionTime: 0,
       },
     };
   }, [settings]);
@@ -104,7 +108,6 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
         return;
     }
 
-    // FIX: Moved calculatePath function declaration to the top of the 'tick' function to prevent a ReferenceError, as it was being called before it was defined.
     const calculatePath = (points: {x: number, y: number}[]): PathPoint[] => {
         const path: PathPoint[] = [];
         for (let i = 0; i < points.length; i++) {
@@ -120,12 +123,27 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
     };
 
     const deltaTime = realDeltaTime * settings.speedMultiplier;
+    // Define a capped delta time for campus movements to ensure smooth visuals at high speed settings.
+    const campusDeltaTime = realDeltaTime * Math.min(settings.speedMultiplier, 6.0);
     p3Refs.simulationTime += deltaTime;
 
     const newCarsSource = [...simulationState.cars];
     let newParkingSpots = [...simulationState.parkingSpots];
     const newMetrics: Partial<SimulationMetrics> = {};
     let hasCarBypassedP3QueueThisTick = false;
+
+    const campusCarStatuses = new Set([
+        CarStatus.ENTERING_CAMPUS,
+        CarStatus.MOVING_TO_PARK,
+        CarStatus.PARKING,
+        CarStatus.MOVING_FROM_PARK,
+        CarStatus.WAITING_AT_P3_EXIT,
+        CarStatus.DRIVING_TO_CAMPUS_DROPOFF,
+        CarStatus.DROPPING_OFF_IN_CAMPUS,
+        CarStatus.EXITING_CAMPUS,
+    ]);
+    const carsInCampus = newCarsSource.filter(c => campusCarStatuses.has(c.status)).length;
+    newMetrics.carsInCampus = carsInCampus;
 
     const carBuckets: { [key in CarStatus]?: Car[] } = {};
     for (const car of newCarsSource) {
@@ -239,11 +257,33 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
         campusLeaderMap.set(enteringCampusCars[i].id, enteringCampusCars[i+1]);
     }
 
+    const campusAisleTraffic = newCarsSource.filter(c => {
+        if (c.status === CarStatus.DRIVING_TO_CAMPUS_DROPOFF || c.status === CarStatus.DROPPING_OFF_IN_CAMPUS) {
+            return true;
+        }
+        if (c.status === CarStatus.MOVING_FROM_PARK) {
+            const { segmentIndex } = getPositionOnPath(c.path, c.progress);
+            // Path from spot is [spot, point_on_aisle, end_of_aisle, ...]
+            // Segment 1 is the horizontal movement along the aisle.
+            if (segmentIndex === 1) {
+                return true;
+            }
+        }
+        return false;
+    })
+    .sort((a, b) => b.position.x - a.position.x); // Sort cars from right to left
+
+    const campusAisleLeaderMap = new Map<number, Car>();
+    for (let i = 0; i < campusAisleTraffic.length - 1; i++) {
+        // The car at index i+1 is the leader of car at index i
+        campusAisleLeaderMap.set(campusAisleTraffic[i].id, campusAisleTraffic[i + 1]);
+    }
+
     p3Refs.p3CarReleaseTimer -= deltaTime;
     if (p3Refs.p3CarReleaseTimer <= 0) {
         const batchSize = settings.mode === 'auto' ? settings.p3BatchSize : 999;
 
-        if (p3Refs.p3State === P3TrafficState.ALLOWING_IN && p3Refs.p3InCounter < batchSize) {
+        if (p3Refs.p3State === P3TrafficState.ALLOWING_IN && p3Refs.p3InCounter < batchSize && carsInCampus < settings.campusCarLimit) {
             const carToRelease = p3EnterQueue[0];
             if (carToRelease) {
                 carToRelease.status = CarStatus.ENTERING_CAMPUS;
@@ -255,11 +295,16 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
         } else if (p3Refs.p3State === P3TrafficState.ALLOWING_OUT && p3Refs.p3OutCounter < batchSize && !p3Refs.isP3BlockedByP4Queue) {
              const carToRelease = p3ExitQueue[0];
              if (carToRelease) {
-                carToRelease.status = CarStatus.DRIVING_TO_P4;
-                carToRelease.path = P3_TO_P4_PATH;
-                carToRelease.progress = 0;
-                p3Refs.p3OutCounter++;
-                p3Refs.p3CarReleaseTimer = 2.5;
+                const headOfQueuePosition = getExitQueuePositionFromHead(0);
+                const distance = Math.hypot(carToRelease.position.x - headOfQueuePosition.x, carToRelease.position.y - headOfQueuePosition.y);
+                
+                if (distance < 0.1) {
+                    carToRelease.status = CarStatus.DRIVING_FROM_CAMPUS_TO_P3;
+                    carToRelease.path = CAMPUS_INTERNAL_EXIT_PATH;
+                    carToRelease.progress = 0;
+                    p3Refs.p3OutCounter++;
+                    p3Refs.p3CarReleaseTimer = 2.5;
+                }
              }
         }
     }
@@ -275,11 +320,13 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
                                 updatedCar.status === CarStatus.EXITING_CAMPUS;
 
         if (isParkingManeuver) {
-            distanceToMove = CRAWLING_SPEED * deltaTime;
+            distanceToMove = CRAWLING_SPEED * campusDeltaTime;
         } else if (updatedCar.status === CarStatus.ENTERING_CAMPUS) {
-            distanceToMove = CAMPUS_ENTRY_SPEED * deltaTime;
+            distanceToMove = CAMPUS_ENTRY_SPEED * campusDeltaTime;
+        } else if (updatedCar.status === CarStatus.DRIVING_FROM_CAMPUS_TO_P3) {
+            distanceToMove = CAMPUS_EXIT_SPEED * realDeltaTime;
         } else if (isCampusDriving) {
-            distanceToMove = PARKING_LOT_SPEED * deltaTime;
+            distanceToMove = PARKING_LOT_SPEED * campusDeltaTime;
         } else {
             distanceToMove = CAR_SPEED * deltaTime;
         }
@@ -287,21 +334,19 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
         if (updatedCar.status === CarStatus.DRIVING_TO_P2 || updatedCar.status === CarStatus.DRIVING_TO_P3) {
             const leader = leaderMap.get(updatedCar.id);
             if (leader) {
-                // If a car is following another car in the queue leading up to P3, it should accelerate slowly.
-                // This creates a more realistic "accordion" effect as the queue starts to move.
-                if (leader.status === CarStatus.DRIVING_TO_P3 || leader.status === CarStatus.WAITING_AT_P3_ENTER) {
-                    // Slow down the acceleration by three times (use 1/3 of the normal speed).
-                    distanceToMove = (CAR_SPEED / 3) * deltaTime;
-                }
-
                 const dx = leader.position.x - updatedCar.position.x;
                 const dy = leader.position.y - updatedCar.position.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
 
-                // Regardless of speed, stop if it gets too close to the car in front.
-                if (distance < 3.5) {
-                    distanceToMove = 0;
+                const safeDistance = QUEUE_SPACING;
+
+                // Slow down if the leader is approaching or in the P3 queue
+                if (leader.status === CarStatus.DRIVING_TO_P3 || leader.status === CarStatus.WAITING_AT_P3_ENTER) {
+                    distanceToMove = Math.min(distanceToMove, (CAR_SPEED / 1.5) * deltaTime);
                 }
+
+                // Don't get closer than the safe distance
+                distanceToMove = Math.max(0, Math.min(distanceToMove, distance - safeDistance));
             }
         }
         
@@ -312,6 +357,17 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
                 if (distance < (QUEUE_SPACING + 1)) {
                     distanceToMove = 0;
                 }
+            }
+        }
+
+        if (updatedCar.status === CarStatus.DRIVING_TO_CAMPUS_DROPOFF || 
+           (updatedCar.status === CarStatus.MOVING_FROM_PARK && getPositionOnPath(updatedCar.path, updatedCar.progress).segmentIndex === 1)) {
+            const leader = campusAisleLeaderMap.get(updatedCar.id);
+            if (leader) {
+                const dx = leader.position.x - updatedCar.position.x;
+                const distance = Math.abs(dx);
+                const safeDistance = QUEUE_SPACING;
+                distanceToMove = Math.max(0, Math.min(distanceToMove, distance - safeDistance));
             }
         }
 
@@ -327,6 +383,7 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
             case CarStatus.MOVING_TO_PARK:
             case CarStatus.MOVING_FROM_PARK:
             case CarStatus.DRIVING_TO_CAMPUS_DROPOFF:
+            case CarStatus.DRIVING_FROM_CAMPUS_TO_P3:
             case CarStatus.DRIVING_TO_EXIT:
                 if (distanceToMove > 0) {
                     updatedCar.progress += distanceToMove;
@@ -426,6 +483,11 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
                     updatedCar.status = CarStatus.WAITING_AT_P3_EXIT;
                     updatedCar.joinQueueTime = p3Refs.simulationTime;
                     break;
+                case CarStatus.DRIVING_FROM_CAMPUS_TO_P3:
+                    updatedCar.status = CarStatus.DRIVING_TO_P4;
+                    updatedCar.path = P3_TO_P4_PATH;
+                    updatedCar.progress = 0;
+                    break;
                 case CarStatus.DRIVING_TO_P4:
                     updatedCar.status = CarStatus.WAITING_AT_P4;
                     updatedCar.timer = settings.p4YieldTime;
@@ -456,7 +518,8 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
                 const canBypassQueue = p3Refs.p3State === P3TrafficState.ALLOWING_IN &&
                                        p3EnterQueue.length === 0 &&
                                        p3Refs.p3InCounter < batchSize &&
-                                       !hasCarBypassedP3QueueThisTick;
+                                       !hasCarBypassedP3QueueThisTick &&
+                                       carsInCampus < settings.campusCarLimit;
 
                 if (canBypassQueue) {
                     hasCarBypassedP3QueueThisTick = true;
@@ -489,11 +552,25 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
             }
         } else if (updatedCar.status === CarStatus.WAITING_AT_P3_EXIT) {
             const queueIndex = p3ExitQueueIndexMap.get(updatedCar.id);
-            if(queueIndex !== undefined) {
-                updatedCar.position = {
-                    x: P3_OUT_QUEUE_START.x + P3_OUT_QUEUE_DIRECTION.x * queueIndex * QUEUE_SPACING,
-                    y: P3_OUT_QUEUE_START.y + P3_OUT_QUEUE_DIRECTION.y * queueIndex * QUEUE_SPACING,
-                };
+            if (queueIndex !== undefined) {
+                const targetPosition = getExitQueuePositionFromHead(queueIndex);
+                const currentPosition = updatedCar.position;
+        
+                const dx = targetPosition.x - currentPosition.x;
+                const dy = targetPosition.y - currentPosition.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+        
+                const queueSpeed = PARKING_LOT_SPEED * campusDeltaTime;
+        
+                if (distance > 0.1) { // A small threshold to prevent jittering
+                    if (distance <= queueSpeed) {
+                        updatedCar.position = targetPosition; // Snap to position if close enough
+                    } else {
+                        // Move towards the target
+                        updatedCar.position.x += (dx / distance) * queueSpeed;
+                        updatedCar.position.y += (dy / distance) * queueSpeed;
+                    }
+                }
             }
         } else if (updatedCar.status === CarStatus.WAITING_AT_P4) {
             const queueIndex = p4QueueIndexMap.get(updatedCar.id);
@@ -517,18 +594,21 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
         for (let i = 0; i < newlyExitedCount; i++) {
             const campusExitCandidate = updatedCars
                 .filter(c => c.status === CarStatus.WAITING_AT_P3_EXIT)
-                .sort((a, b) => a.id - b.id)[0];
+                .sort((a, b) => (a.joinQueueTime ?? 0) - (b.joinQueueTime ?? 0))[0];
             
             const dropoffCandidate = updatedCars
                 .find(c => c.status === CarStatus.DROPPING_OFF_AT_P3 && c.timer <= 0);
 
             if (p3Refs.nextP3ReleaseQueue === 'campus') {
                 if (campusExitCandidate) {
-                    campusExitCandidate.status = CarStatus.DRIVING_TO_P4;
-                    campusExitCandidate.path = P3_TO_P4_PATH;
-                    campusExitCandidate.progress = 0;
-                    campusExitCandidate.position = getPositionOnPath(campusExitCandidate.path, 0).position;
-                    p3Refs.nextP3ReleaseQueue = 'dropoff';
+                    const headOfQueuePosition = getExitQueuePositionFromHead(0);
+                    const distance = Math.hypot(campusExitCandidate.position.x - headOfQueuePosition.x, campusExitCandidate.position.y - headOfQueuePosition.y);
+                    if (distance < 0.1) {
+                        campusExitCandidate.status = CarStatus.DRIVING_FROM_CAMPUS_TO_P3;
+                        campusExitCandidate.path = CAMPUS_INTERNAL_EXIT_PATH;
+                        campusExitCandidate.progress = 0;
+                        p3Refs.nextP3ReleaseQueue = 'dropoff';
+                    }
                 } else if (dropoffCandidate) {
                     dropoffCandidate.status = CarStatus.DRIVING_TO_P4;
                     dropoffCandidate.path = P3_TO_P4_PATH;
@@ -543,10 +623,13 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
                     dropoffCandidate.position = getPositionOnPath(dropoffCandidate.path, 0).position;
                     p3Refs.nextP3ReleaseQueue = 'campus';
                 } else if (campusExitCandidate) {
-                    campusExitCandidate.status = CarStatus.DRIVING_TO_P4;
-                    campusExitCandidate.path = P3_TO_P4_PATH;
-                    campusExitCandidate.progress = 0;
-                    campusExitCandidate.position = getPositionOnPath(campusExitCandidate.path, 0).position;
+                    const headOfQueuePosition = getExitQueuePositionFromHead(0);
+                    const distance = Math.hypot(campusExitCandidate.position.x - headOfQueuePosition.x, campusExitCandidate.position.y - headOfQueuePosition.y);
+                    if (distance < 0.1) {
+                        campusExitCandidate.status = CarStatus.DRIVING_FROM_CAMPUS_TO_P3;
+                        campusExitCandidate.path = CAMPUS_INTERNAL_EXIT_PATH;
+                        campusExitCandidate.progress = 0;
+                    }
                 }
             }
         }
@@ -565,7 +648,6 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
     
     const officiallyWaitingIn = updatedCars.filter(c => c.status === CarStatus.WAITING_AT_P3_ENTER);
     let totalWaitingIn = officiallyWaitingIn.length;
-    // If a queue has officially formed at P3, all cars driving towards it are also considered part of the traffic jam.
     if (totalWaitingIn > 0) {
         totalWaitingIn += updatedCars.filter(c => c.status === CarStatus.DRIVING_TO_P3).length;
         totalWaitingIn += updatedCars.filter(c => c.status === CarStatus.DRIVING_TO_P2).length;
@@ -575,7 +657,9 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
     newMetrics.waitingAtP3Out = updatedCars.filter(c => c.status === CarStatus.WAITING_AT_P3_EXIT).length;
     const waitingAtP4 = updatedCars.filter(c => c.status === CarStatus.WAITING_AT_P4).length;
 
-    if (newMetrics.waitingAtP1 > 5) {
+    if ((newMetrics.carsInCampus ?? 0) >= settings.campusCarLimit) {
+        newMetrics.trafficFlow = 'Campus Full';
+    } else if (newMetrics.waitingAtP1 > 5) {
         newMetrics.trafficFlow = 'Congestion at P1';
     } else if (newMetrics.waitingAtP3In > 5 || newMetrics.waitingAtP3Out > 5) {
         newMetrics.trafficFlow = 'Congestion at P3';
@@ -589,11 +673,16 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
 
     const { summaryStats } = p3Refs;
     const currentTimeFormatted = newMetrics.simulationTime;
+    const isCongested = (newMetrics.trafficFlow === 'Congestion at P1' || newMetrics.trafficFlow === 'Congestion at P3' || newMetrics.trafficFlow === 'Congestion at P4');
+
+    if (isCongested) {
+        summaryStats.totalCongestionTime += deltaTime;
+    }
 
     if (newMetrics.trafficFlow === 'Parking Full' && !summaryStats.firstParkingFullTime) {
         summaryStats.firstParkingFullTime = currentTimeFormatted;
     }
-    if ((newMetrics.trafficFlow === 'Congestion at P1' || newMetrics.trafficFlow === 'Congestion at P3' || newMetrics.trafficFlow === 'Congestion at P4')) {
+    if (isCongested) {
         if (!summaryStats.firstCongestionTime) {
             summaryStats.firstCongestionTime = currentTimeFormatted;
         }
@@ -615,7 +704,12 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
         cars: updatedCars,
         parkingSpots: newParkingSpots,
         metrics: { ...prev.metrics, ...newMetrics },
-        summaryStats: { ...summaryStats },
+        summaryStats: {
+            firstParkingFullTime: summaryStats.firstParkingFullTime,
+            firstCongestionTime: summaryStats.firstCongestionTime,
+            lastCongestionTime: summaryStats.lastCongestionTime,
+            totalCongestionTime: formatTime(summaryStats.totalCongestionTime),
+        },
     }));
     
     animationFrameId.current = requestAnimationFrame(tick);

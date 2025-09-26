@@ -11,6 +11,8 @@ export const getInitialState = (settings: SimulationSettings): SimulationState =
     exitedCars: 0,
     carsParked: 0,
     totalParkingSpots: settings.parkingCapacity,
+    carsInCampus: 0,
+    campusCarLimit: settings.campusCarLimit,
     waitingAtP1: 0,
     waitingAtP3In: 0,
     waitingAtP3Out: 0,
@@ -20,6 +22,7 @@ export const getInitialState = (settings: SimulationSettings): SimulationState =
     firstParkingFullTime: null,
     firstCongestionTime: null,
     lastCongestionTime: null,
+    totalCongestionTime: null,
   },
 });
 

@@ -28,6 +28,7 @@ export const SummaryReport: React.FC<SummaryReportProps> = ({ metrics, summarySt
           <StatItem label="First Time Parking Was Full" value={summaryStats.firstParkingFullTime} />
           <StatItem label="First Congestion Detected" value={summaryStats.firstCongestionTime} />
           <StatItem label="Last Congestion Detected" value={summaryStats.lastCongestionTime} />
+          <StatItem label="Total Congestion Time" value={summaryStats.totalCongestionTime} />
         </div>
         
         <button

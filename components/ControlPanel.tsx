@@ -186,6 +186,12 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 onChange={v => onSettingsChange({ parkingCapacity: v })}
             />
             <SliderControl 
+                label="Campus Car Limit"
+                value={settings.campusCarLimit}
+                min={20} max={200} step={10}
+                onChange={v => onSettingsChange({ campusCarLimit: v })}
+            />
+            <SliderControl 
                 label="Parking Probability"
                 value={settings.parkingProbability}
                 min={0} max={1} step={0.1} precision={1}
