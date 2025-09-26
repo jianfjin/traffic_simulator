@@ -47,6 +47,8 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
     spotPositions: createParkingSpots(settings.parkingCapacity),
     isP3BlockedByP4Queue: false,
     nextP3ReleaseQueue: 'campus' as 'campus' | 'dropoff',
+    isCampusEntryPaused: false,
+    carsExitedSinceCampusFull: 0,
     summaryStats: {
         firstParkingFullTime: null as string | null,
         firstCongestionTime: null as string | null,
@@ -75,6 +77,8 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
       spotPositions: createParkingSpots(settings.parkingCapacity),
       isP3BlockedByP4Queue: false,
       nextP3ReleaseQueue: 'campus' as 'campus' | 'dropoff',
+      isCampusEntryPaused: false,
+      carsExitedSinceCampusFull: 0,
       summaryStats: {
         firstParkingFullTime: null,
         firstCongestionTime: null,
@@ -144,6 +148,12 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
     ]);
     const carsInCampus = newCarsSource.filter(c => campusCarStatuses.has(c.status)).length;
     newMetrics.carsInCampus = carsInCampus;
+
+    // Campus Entry Gate Logic
+    if (carsInCampus >= settings.campusCarLimit && !p3Refs.isCampusEntryPaused) {
+        p3Refs.isCampusEntryPaused = true;
+        p3Refs.carsExitedSinceCampusFull = 0;
+    }
 
     const carBuckets: { [key in CarStatus]?: Car[] } = {};
     for (const car of newCarsSource) {
@@ -226,6 +236,7 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
         }
     }
 
+    // --- Leader-Follower Logic for Main Road (P1->P2->P3) ---
     const inboundTraffic = [
         ...(carBuckets[CarStatus.DRIVING_TO_P2] ?? []),
         ...(carBuckets[CarStatus.DRIVING_TO_P3] ?? []),
@@ -251,6 +262,15 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
         leaderMap.set(inboundTraffic[i].id, inboundTraffic[i + 1]);
     }
     
+    // --- Leader-Follower Logic for P4 Approach ---
+    const p4Driving = (carBuckets[CarStatus.DRIVING_TO_P4] ?? []).sort((a, b) => b.progress - a.progress);
+    const p4ApproachTraffic = [...p4Driving, ...p4Queue];
+    const p4LeaderMap = new Map<number, Car>();
+    for (let i = 1; i < p4ApproachTraffic.length; i++) {
+        p4LeaderMap.set(p4ApproachTraffic[i].id, p4ApproachTraffic[i - 1]);
+    }
+
+    // --- Leader-Follower Logic for Inside Campus ---
     const enteringCampusCars = (carBuckets[CarStatus.ENTERING_CAMPUS] ?? []).sort((a,b) => a.progress - b.progress);
     const campusLeaderMap = new Map<number, Car>();
     for (let i = 0; i < enteringCampusCars.length - 1; i++) {
@@ -263,27 +283,22 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
         }
         if (c.status === CarStatus.MOVING_FROM_PARK) {
             const { segmentIndex } = getPositionOnPath(c.path, c.progress);
-            // Path from spot is [spot, point_on_aisle, end_of_aisle, ...]
-            // Segment 1 is the horizontal movement along the aisle.
-            if (segmentIndex === 1) {
-                return true;
-            }
+            if (segmentIndex === 1) return true;
         }
         return false;
-    })
-    .sort((a, b) => b.position.x - a.position.x); // Sort cars from right to left
+    }).sort((a, b) => b.position.x - a.position.x);
 
     const campusAisleLeaderMap = new Map<number, Car>();
     for (let i = 0; i < campusAisleTraffic.length - 1; i++) {
-        // The car at index i+1 is the leader of car at index i
         campusAisleLeaderMap.set(campusAisleTraffic[i].id, campusAisleTraffic[i + 1]);
     }
 
     p3Refs.p3CarReleaseTimer -= deltaTime;
     if (p3Refs.p3CarReleaseTimer <= 0) {
         const batchSize = settings.mode === 'auto' ? settings.p3BatchSize : 999;
+        const canEnterCampus = !p3Refs.isCampusEntryPaused;
 
-        if (p3Refs.p3State === P3TrafficState.ALLOWING_IN && p3Refs.p3InCounter < batchSize && carsInCampus < settings.campusCarLimit) {
+        if (p3Refs.p3State === P3TrafficState.ALLOWING_IN && p3Refs.p3InCounter < batchSize && canEnterCampus) {
             const carToRelease = p3EnterQueue[0];
             if (carToRelease) {
                 carToRelease.status = CarStatus.ENTERING_CAMPUS;
@@ -337,15 +352,21 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
                 const dx = leader.position.x - updatedCar.position.x;
                 const dy = leader.position.y - updatedCar.position.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
-
                 const safeDistance = QUEUE_SPACING;
-
-                // Slow down if the leader is approaching or in the P3 queue
                 if (leader.status === CarStatus.DRIVING_TO_P3 || leader.status === CarStatus.WAITING_AT_P3_ENTER) {
                     distanceToMove = Math.min(distanceToMove, (CAR_SPEED / 1.5) * deltaTime);
                 }
+                distanceToMove = Math.max(0, Math.min(distanceToMove, distance - safeDistance));
+            }
+        }
 
-                // Don't get closer than the safe distance
+        if (updatedCar.status === CarStatus.DRIVING_TO_P4) {
+            const leader = p4LeaderMap.get(updatedCar.id);
+            if (leader) {
+                const dx = leader.position.x - updatedCar.position.x;
+                const dy = leader.position.y - updatedCar.position.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                const safeDistance = QUEUE_SPACING;
                 distanceToMove = Math.max(0, Math.min(distanceToMove, distance - safeDistance));
             }
         }
@@ -514,12 +535,12 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
                 updatedCar.position = P3;
             } else {
                 const batchSize = settings.mode === 'auto' ? settings.p3BatchSize : 999;
-
+                const canEnterCampus = !p3Refs.isCampusEntryPaused;
                 const canBypassQueue = p3Refs.p3State === P3TrafficState.ALLOWING_IN &&
                                        p3EnterQueue.length === 0 &&
                                        p3Refs.p3InCounter < batchSize &&
                                        !hasCarBypassedP3QueueThisTick &&
-                                       carsInCampus < settings.campusCarLimit;
+                                       canEnterCampus;
 
                 if (canBypassQueue) {
                     hasCarBypassedP3QueueThisTick = true;
@@ -635,6 +656,32 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
         }
     }
 
+    if (p3Refs.isCampusEntryPaused) {
+        const carsThatJustExitedCampus = updatedCars.filter(updatedCar => {
+            const oldCar = simulationState.cars.find(c => c.id === updatedCar.id);
+            return oldCar && oldCar.status === CarStatus.DRIVING_FROM_CAMPUS_TO_P3 && updatedCar.status === CarStatus.DRIVING_TO_P4;
+        });
+    
+        if (carsThatJustExitedCampus.length > 0) {
+            p3Refs.carsExitedSinceCampusFull += carsThatJustExitedCampus.length;
+        }
+    
+        const hasBatchSizeBeenMet = p3Refs.carsExitedSinceCampusFull >= settings.p3BatchSize;
+        
+        const isExitPathEffectivelyClear = !updatedCars.some(c => 
+            c.status === CarStatus.WAITING_AT_P3_EXIT || 
+            c.status === CarStatus.MOVING_FROM_PARK ||
+            c.status === CarStatus.EXITING_CAMPUS
+        );
+        
+        const hasQueueClearedAfterExits = isExitPathEffectivelyClear && p3Refs.carsExitedSinceCampusFull > 0;
+    
+        if (hasBatchSizeBeenMet || hasQueueClearedAfterExits) {
+            p3Refs.isCampusEntryPaused = false;
+            p3Refs.carsExitedSinceCampusFull = 0;
+        }
+    }
+
     const formatTime = (seconds: number) => {
         const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
         const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
@@ -657,7 +704,7 @@ export const useSimulationManager = (settings: SimulationSettings, humanControls
     newMetrics.waitingAtP3Out = updatedCars.filter(c => c.status === CarStatus.WAITING_AT_P3_EXIT).length;
     const waitingAtP4 = updatedCars.filter(c => c.status === CarStatus.WAITING_AT_P4).length;
 
-    if ((newMetrics.carsInCampus ?? 0) >= settings.campusCarLimit) {
+    if (p3Refs.isCampusEntryPaused) {
         newMetrics.trafficFlow = 'Campus Full';
     } else if (newMetrics.waitingAtP1 > 5) {
         newMetrics.trafficFlow = 'Congestion at P1';
